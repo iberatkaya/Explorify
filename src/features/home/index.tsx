@@ -15,6 +15,10 @@ const HomeScreen = ({ navigation }: Props) => {
         title="Go to Details"
         onPress={() => navigation.navigate('Details', { itemId: 1 })}
       />
+      <Button
+        title="Go to Neighborhoods Map"
+        onPress={() => navigation.navigate('NeighborhoodsMapScreen')}
+      />
     </View>
   );
 };

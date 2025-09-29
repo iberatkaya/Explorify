@@ -77,9 +77,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace "com.explorify"
+    namespace "com.kaya.explorify"
     defaultConfig {
-        applicationId "com.explorify"
+        applicationId "com.kaya.explorify"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

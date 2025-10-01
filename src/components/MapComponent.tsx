@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, Dimensions } from 'react-native';
+import { StyleSheet, View, Dimensions, Text } from 'react-native';
 import MapView, { Marker, Region, Polygon } from 'react-native-maps';
 
 const { width, height } = Dimensions.get('window');
@@ -54,6 +54,96 @@ const MapComponent: React.FC<MapComponentProps> = ({
       longitude: coord[0],
       latitude: coord[1],
     }));
+  };
+
+  // Helper function to find the largest polygon in a MultiPolygon (main landmass)
+  const getLargestPolygon = (coordinates: number[][][][]) => {
+    if (coordinates.length === 1) {
+      return coordinates[0];
+    }
+
+    // Calculate area for each polygon and return the largest one
+    let largestPolygon = coordinates[0];
+    let largestArea = 0;
+
+    coordinates.forEach(polygon => {
+      const coords = polygon[0];
+      // Remove closing coordinate if present
+      const cleanCoords =
+        coords[coords.length - 1][0] === coords[0][0] &&
+        coords[coords.length - 1][1] === coords[0][1]
+          ? coords.slice(0, -1)
+          : coords;
+
+      // Calculate area using shoelace formula
+      let area = 0;
+      for (let i = 0; i < cleanCoords.length; i++) {
+        const j = (i + 1) % cleanCoords.length;
+        area += cleanCoords[i][0] * cleanCoords[j][1];
+        area -= cleanCoords[j][0] * cleanCoords[i][1];
+      }
+      area = Math.abs(area) / 2;
+
+      if (area > largestArea) {
+        largestArea = area;
+        largestPolygon = polygon;
+      }
+    });
+
+    return largestPolygon;
+  };
+  // Helper function to get center point of a polygon using proper centroid calculation
+  const getPolygonCenter = (coordinates: number[][][]) => {
+    const coords = coordinates[0];
+
+    // Remove the last coordinate if it's the same as the first (closing the polygon)
+    const cleanCoords =
+      coords[coords.length - 1][0] === coords[0][0] &&
+      coords[coords.length - 1][1] === coords[0][1]
+        ? coords.slice(0, -1)
+        : coords;
+
+    // Calculate polygon centroid using the shoelace formula
+    let area = 0;
+    let centroidX = 0;
+    let centroidY = 0;
+
+    for (let i = 0; i < cleanCoords.length; i++) {
+      const j = (i + 1) % cleanCoords.length;
+      const xi = cleanCoords[i][0]; // longitude
+      const yi = cleanCoords[i][1]; // latitude
+      const xj = cleanCoords[j][0]; // longitude
+      const yj = cleanCoords[j][1]; // latitude
+
+      const cross = xi * yj - xj * yi;
+      area += cross;
+      centroidX += (xi + xj) * cross;
+      centroidY += (yi + yj) * cross;
+    }
+
+    area = area / 2;
+
+    // If area is 0 (degenerate polygon), fall back to simple average
+    if (Math.abs(area) < 1e-10) {
+      let totalLat = 0;
+      let totalLng = 0;
+      cleanCoords.forEach(coord => {
+        totalLng += coord[0];
+        totalLat += coord[1];
+      });
+      return {
+        lat: totalLat / cleanCoords.length,
+        lng: totalLng / cleanCoords.length,
+      };
+    }
+
+    centroidX = centroidX / (6 * area);
+    centroidY = centroidY / (6 * area);
+
+    return {
+      lat: centroidY,
+      lng: centroidX,
+    };
   };
 
   // Helper function to generate bright, vibrant colors based on neighborhood name
@@ -127,6 +217,30 @@ const MapComponent: React.FC<MapComponentProps> = ({
           ));
         })}
 
+        {/* Render neighborhood name labels */}
+        {neighborhoods?.features.map((feature, index) => {
+          const largestPolygon = getLargestPolygon(
+            feature.geometry.coordinates,
+          );
+          const center = getPolygonCenter(largestPolygon);
+          return (
+            <Marker
+              key={`label-${feature.properties.ntaname}-${index}`}
+              coordinate={{
+                latitude: center.lat,
+                longitude: center.lng,
+              }}
+              anchor={{ x: 0.5, y: 0.5 }}
+            >
+              <View style={styles.labelContainer}>
+                <Text style={styles.labelText}>
+                  {feature.properties.ntaname}
+                </Text>
+              </View>
+            </Marker>
+          );
+        })}
+
         {/* Render markers */}
         {markers.map(marker => (
           <Marker
@@ -151,6 +265,28 @@ const styles = StyleSheet.create({
   map: {
     width: width,
     height: height,
+  },
+  labelContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.2)',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  labelText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
   },
 });
 

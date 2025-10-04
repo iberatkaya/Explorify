@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { StyleSheet, View, Dimensions, Text } from 'react-native';
 import MapView, { Marker, Region, Polygon } from 'react-native-maps';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width, height } = Dimensions.get('window');
 
@@ -46,6 +47,44 @@ const MapComponent: React.FC<MapComponentProps> = ({
   markers = [],
   neighborhoods,
 }) => {
+  const [currentRegion, setCurrentRegion] = useState<Region>(region);
+  const [colorCache, setColorCache] = useState<{
+    [key: string]: { r: number; g: number; b: number };
+  }>({});
+  const [colorsLoaded, setColorsLoaded] = useState(false);
+
+  // Load cached colors from AsyncStorage
+  useEffect(() => {
+    const loadColors = async () => {
+      try {
+        const storedColors = await AsyncStorage.getItem('neighborhood_colors');
+        if (storedColors) {
+          setColorCache(JSON.parse(storedColors));
+        }
+        setColorsLoaded(true);
+      } catch (error) {
+        console.error('Error loading colors from storage:', error);
+        setColorsLoaded(true);
+      }
+    };
+
+    loadColors();
+  }, []);
+
+  // Save colors to AsyncStorage whenever cache updates
+  const saveColorsToStorage = useCallback(
+    async (colors: { [key: string]: { r: number; g: number; b: number } }) => {
+      try {
+        await AsyncStorage.setItem(
+          'neighborhood_colors',
+          JSON.stringify(colors),
+        );
+      } catch (error) {
+        console.error('Error saving colors to storage:', error);
+      }
+    },
+    [],
+  );
   // Helper function to convert GeoJSON coordinates to react-native-maps format
   const convertCoordinates = (
     coordinates: number[][][],
@@ -146,48 +185,154 @@ const MapComponent: React.FC<MapComponentProps> = ({
     };
   };
 
-  // Helper function to generate bright, vibrant colors based on neighborhood name
-  const getRandomColor = (seed: string) => {
-    // Use a simple hash function based on the neighborhood name for consistent colors
-    let hash = 0;
-    for (let i = 0; i < seed.length; i++) {
-      const char = seed.charCodeAt(i);
-      hash = hash * 31 + char;
+  // Helper function to get or generate colors with caching
+  const getNeighborhoodColor = useCallback(
+    (neighborhoodName: string) => {
+      // Check if color is already cached
+      if (colorCache[neighborhoodName]) {
+        return colorCache[neighborhoodName];
+      }
+
+      // Generate new color using the existing algorithm
+      let hash = 0;
+      for (let i = 0; i < neighborhoodName.length; i++) {
+        const char = neighborhoodName.charCodeAt(i);
+        hash = hash * 31 + char;
+      }
+
+      // Generate vibrant colors by ensuring minimum brightness
+      // Use HSL color space approach for better color distribution
+      const hue = Math.abs(hash) % 360;
+      const saturation = 70 + (Math.abs(hash * 13) % 30); // 70-100% saturation for vibrant colors
+      const lightness = 45 + (Math.abs(hash * 7) % 25); // 45-70% lightness to avoid too dark or too light
+
+      // Convert HSL to RGB
+      const hslToRgb = (h: number, s: number, l: number) => {
+        h = h / 360;
+        s = s / 100;
+        l = l / 100;
+
+        const a = s * Math.min(l, 1 - l);
+        const f = (n: number) => {
+          const k = (n + h * 12) % 12;
+          return l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+        };
+
+        return {
+          r: Math.round(f(0) * 255),
+          g: Math.round(f(8) * 255),
+          b: Math.round(f(4) * 255),
+        };
+      };
+
+      const newColor = hslToRgb(hue, saturation, lightness);
+
+      // Cache the new color
+      const updatedCache = { ...colorCache, [neighborhoodName]: newColor };
+      setColorCache(updatedCache);
+
+      // Save to storage asynchronously
+      saveColorsToStorage(updatedCache);
+
+      return newColor;
+    },
+    [colorCache, saveColorsToStorage],
+  );
+
+  // Helper function to determine if labels should be clustered based on zoom level
+  const shouldClusterLabels = (mapRegion: Region) => {
+    // If latitudeDelta is large (zoomed out), cluster labels
+    return mapRegion.latitudeDelta > 0.05; // Adjust this threshold as needed
+  };
+
+  // Helper function to cluster nearby neighborhoods
+  const clusterNeighborhoods = useMemo(() => {
+    if (!neighborhoods || !shouldClusterLabels(currentRegion)) {
+      return neighborhoods?.features || [];
     }
 
-    // Generate vibrant colors by ensuring minimum brightness
-    // Use HSL color space approach for better color distribution
-    const hue = Math.abs(hash) % 360;
-    const saturation = 70 + (Math.abs(hash * 13) % 30); // 70-100% saturation for vibrant colors
-    const lightness = 45 + (Math.abs(hash * 7) % 25); // 45-70% lightness to avoid too dark or too light
+    const clustered: NeighborhoodFeature[] = [];
+    const processed = new Set<number>();
+    const clusterDistance = currentRegion.latitudeDelta * 0.3; // Cluster distance based on zoom
 
-    // Convert HSL to RGB
-    const hslToRgb = (h: number, s: number, l: number) => {
-      h = h / 360;
-      s = s / 100;
-      l = l / 100;
+    neighborhoods.features.forEach((feature, index) => {
+      if (processed.has(index)) return;
 
-      const a = s * Math.min(l, 1 - l);
-      const f = (n: number) => {
-        const k = (n + h * 12) % 12;
-        return l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
-      };
+      const largestPolygon = getLargestPolygon(feature.geometry.coordinates);
+      const center = getPolygonCenter(largestPolygon);
 
-      return {
-        r: Math.round(f(0) * 255),
-        g: Math.round(f(8) * 255),
-        b: Math.round(f(4) * 255),
-      };
-    };
+      // Find nearby neighborhoods to cluster
+      const cluster = [feature];
+      processed.add(index);
 
-    return hslToRgb(hue, saturation, lightness);
-  };
+      neighborhoods.features.forEach((otherFeature, otherIndex) => {
+        if (processed.has(otherIndex) || index === otherIndex) return;
+
+        const otherLargestPolygon = getLargestPolygon(
+          otherFeature.geometry.coordinates,
+        );
+        const otherCenter = getPolygonCenter(otherLargestPolygon);
+
+        const distance = Math.sqrt(
+          Math.pow(center.lat - otherCenter.lat, 2) +
+            Math.pow(center.lng - otherCenter.lng, 2),
+        );
+
+        if (distance < clusterDistance) {
+          cluster.push(otherFeature);
+          processed.add(otherIndex);
+        }
+      });
+
+      // Create a representative feature for the cluster
+      if (cluster.length > 1) {
+        // Use the largest neighborhood in the cluster as representative
+        const representative = cluster.reduce((prev, current) => {
+          const prevPolygon = getLargestPolygon(prev.geometry.coordinates);
+          const currentPolygon = getLargestPolygon(
+            current.geometry.coordinates,
+          );
+
+          // Simple area comparison (could be more sophisticated)
+          const prevArea = prevPolygon[0].length;
+          const currentArea = currentPolygon[0].length;
+
+          return currentArea > prevArea ? current : prev;
+        });
+
+        // Modify the name to show it's a cluster
+        const clusterFeature: NeighborhoodFeature = {
+          ...representative,
+          properties: {
+            ...representative.properties,
+            ntaname:
+              cluster.length === 2
+                ? `${representative.properties.ntaname} & ${
+                    cluster.find(f => f !== representative)?.properties.ntaname
+                  }`
+                : `${representative.properties.ntaname}`,
+          },
+        };
+        clustered.push(clusterFeature);
+      } else {
+        clustered.push(feature);
+      }
+    });
+
+    return clustered;
+  }, [neighborhoods, currentRegion]);
+
+  // Callback for region change
+  const onRegionChangeComplete = useCallback((newRegion: Region) => {
+    setCurrentRegion(newRegion);
+  }, []);
 
   return (
     <View style={styles.container}>
       <MapView
         style={styles.map}
         initialRegion={region}
+        onRegionChangeComplete={onRegionChangeComplete}
         showsUserLocation={true}
         showsMyLocationButton={true}
         followsUserLocation={true}
@@ -198,27 +343,30 @@ const MapComponent: React.FC<MapComponentProps> = ({
         rotateEnabled={true}
       >
         {/* Render neighborhood polygons */}
-        {neighborhoods?.features.map((feature, index) => {
-          const { r, g, b } = getRandomColor(feature.properties.ntaname);
-          return feature.geometry.coordinates.map((polygon, polygonIndex) => (
-            <Polygon
-              key={`${feature.properties.ntaname}-${index}-${polygonIndex}`}
-              coordinates={convertCoordinates(polygon)}
-              fillColor={`rgba(${r}, ${g}, ${b}, 0.2)`}
-              strokeColor={`rgba(${r}, ${g}, ${b}, 0.6)`}
-              strokeWidth={2}
-              tappable={true}
-              onPress={() => {
-                console.log(
-                  `Tapped ${feature.properties.ntaname} in ${feature.properties.boroname}`,
-                );
-              }}
-            />
-          ));
-        })}
+        {colorsLoaded &&
+          neighborhoods?.features.map((feature, index) => {
+            const { r, g, b } = getNeighborhoodColor(
+              feature.properties.ntaname,
+            );
+            return feature.geometry.coordinates.map((polygon, polygonIndex) => (
+              <Polygon
+                key={`${feature.properties.ntaname}-${index}-${polygonIndex}`}
+                coordinates={convertCoordinates(polygon)}
+                fillColor={`rgba(${r}, ${g}, ${b}, 0.2)`}
+                strokeColor={`rgba(${r}, ${g}, ${b}, 0.6)`}
+                strokeWidth={2}
+                tappable={true}
+                onPress={() => {
+                  console.log(
+                    `Tapped ${feature.properties.ntaname} in ${feature.properties.boroname}`,
+                  );
+                }}
+              />
+            ));
+          })}
 
         {/* Render neighborhood name labels */}
-        {neighborhoods?.features.map((feature, index) => {
+        {clusterNeighborhoods.map((feature, index) => {
           const largestPolygon = getLargestPolygon(
             feature.geometry.coordinates,
           );
@@ -232,8 +380,22 @@ const MapComponent: React.FC<MapComponentProps> = ({
               }}
               anchor={{ x: 0.5, y: 0.5 }}
             >
-              <View style={styles.labelContainer}>
-                <Text style={styles.labelText}>
+              <View
+                style={
+                  feature.properties.ntaname.includes('+') ||
+                  feature.properties.ntaname.includes('&')
+                    ? styles.clusterLabelContainer
+                    : styles.labelContainer
+                }
+              >
+                <Text
+                  style={
+                    feature.properties.ntaname.includes('+') ||
+                    feature.properties.ntaname.includes('&')
+                      ? styles.clusterLabelText
+                      : styles.labelText
+                  }
+                >
                   {feature.properties.ntaname}
                 </Text>
               </View>
@@ -282,10 +444,32 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
   },
+  clusterLabelContainer: {
+    backgroundColor: 'rgba(59, 130, 246, 0.9)', // Blue background for clusters
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(37, 99, 235, 0.8)',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 3,
+  },
   labelText: {
     fontSize: 12,
     fontWeight: '600',
     color: '#333',
+    textAlign: 'center',
+  },
+  clusterLabelText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#fff',
     textAlign: 'center',
   },
 });

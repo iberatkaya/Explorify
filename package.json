@@ -10,16 +10,21 @@
     "test": "jest"
   },
   "dependencies": {
+    "@gorhom/bottom-sheet": "^5.2.6",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native/new-app-screen": "0.81.4",
     "@react-navigation/native": "^7.1.17",
     "@react-navigation/native-stack": "^7.3.26",
+    "debounce": "^2.2.0",
     "react": "19.1.0",
     "react-native": "0.81.4",
     "react-native-config": "^1.5.9",
+    "react-native-gesture-handler": "^2.28.0",
     "react-native-maps": "^1.26.9",
+    "react-native-reanimated": "^4.1.2",
     "react-native-safe-area-context": "^5.6.1",
-    "react-native-screens": "^4.16.0"
+    "react-native-screens": "^4.16.0",
+    "react-native-worklets": "^0.6.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -32,6 +37,8 @@
     "@react-native/eslint-config": "0.81.4",
     "@react-native/metro-config": "0.81.4",
     "@react-native/typescript-config": "0.81.4",
+    "@testing-library/react-native": "^13.3.3",
+    "@types/debounce": "^1.2.4",
     "@types/jest": "^29.5.13",
     "@types/react": "^19.1.0",
     "@types/react-test-renderer": "^19.1.0",

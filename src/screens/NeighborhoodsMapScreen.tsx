@@ -63,6 +63,41 @@ const NeighborhoodsMapScreen: React.FC = () => {
     [],
   );
 
+  // Handle marker press from map
+  const handleMarkerPress = useCallback(
+    (marker: {
+      id: string;
+      coordinate: { latitude: number; longitude: number };
+      title?: string;
+      description?: string;
+    }) => {
+      console.log('Marker pressed:', marker.id, marker.coordinate);
+
+      // Find which neighborhood this marker belongs to
+      if (neighborhoods?.features) {
+        const {
+          findNeighborhoodForCoordinate,
+        } = require('../components/MapComponent/utils');
+        const foundNeighborhood = findNeighborhoodForCoordinate(
+          marker.coordinate,
+          neighborhoods.features,
+        );
+
+        if (foundNeighborhood) {
+          console.log(
+            'Found neighborhood for marker:',
+            foundNeighborhood.properties.ntaname,
+          );
+          setSelectedNeighborhood(foundNeighborhood);
+          bottomSheetRef.current?.expand();
+        } else {
+          console.log('No neighborhood found for marker at', marker.coordinate);
+        }
+      }
+    },
+    [neighborhoods],
+  );
+
   // Handle closing bottom sheet
   const handleCloseBottomSheet = useCallback(() => {
     setSelectedNeighborhood(null);
@@ -155,6 +190,7 @@ const NeighborhoodsMapScreen: React.FC = () => {
         neighborhoods={neighborhoods || undefined}
         places={places}
         onNeighborhoodPress={handleNeighborhoodPress}
+        onMarkerPress={handleMarkerPress}
         region={{
           latitude: 40.7589, // NYC coordinates
           longitude: -73.9851,

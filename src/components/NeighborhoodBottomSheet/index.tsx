@@ -36,18 +36,17 @@ const NeighborhoodBottomSheet = React.forwardRef<
     const [editPlaceTitle, setEditPlaceTitle] = useState('');
     const [editPlaceGoogleMapsLink, setEditPlaceGoogleMapsLink] = useState('');
 
-    // Bottom sheet snap points
-    const snapPoints = useMemo(() => ['88%'], []);
+    // Clean neighborhood name by removing cluster count pattern like "(+4)"
+    const cleanNeighborhoodName = useMemo(() => {
+      if (!neighborhoodName) return '';
 
-    // Handle sheet changes
-    const handleSheetChanges = useCallback(
-      (index: number) => {
-        if (index === -1) {
-          onClose();
-        }
-      },
-      [onClose],
-    );
+      // Remove cluster count pattern like "(+4)" from the end
+      const cleanName = neighborhoodName.replace(/\s*\(\+\d+\)$/, '');
+      return cleanName;
+    }, [neighborhoodName]);
+
+    // Bottom sheet snap points
+    const snapPoints = useMemo(() => ['80%'], []);
 
     // Handle adding a new place
     const handleAddPlace = useCallback(() => {
@@ -235,16 +234,17 @@ const NeighborhoodBottomSheet = React.forwardRef<
         ref={ref}
         index={-1}
         snapPoints={snapPoints}
-        onChange={handleSheetChanges}
         backdropComponent={renderBackdrop}
         enablePanDownToClose
+        animateOnMount={true}
+        enableDynamicSizing={false}
         backgroundStyle={styles.container}
       >
         <BottomSheetView style={styles.content}>
           {/* Header */}
           <View style={styles.header}>
             <Text style={styles.title}>
-              {neighborhoodName || 'Neighborhood'}
+              {cleanNeighborhoodName || 'Neighborhood'}
             </Text>
           </View>
 

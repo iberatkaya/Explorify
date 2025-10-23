@@ -41,6 +41,12 @@ export interface MapComponentProps {
     neighborhoods?: NeighborhoodGeoJSON;
     places?: { [neighborhoodName: string]: Place[] };
     onNeighborhoodPress?: (neighborhood: NeighborhoodFeature) => void;
+    onMarkerPress?: (marker: {
+        id: string;
+        coordinate: { latitude: number; longitude: number };
+        title?: string;
+        description?: string;
+    }) => void;
 }
 
 export interface ColorData {

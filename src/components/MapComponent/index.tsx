@@ -26,6 +26,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
   neighborhoods,
   places = {},
   onNeighborhoodPress,
+  onMarkerPress,
 }) => {
   const [currentRegion, setCurrentRegion] = useState<Region>(region);
   const { getNeighborhoodColor, colorsLoaded } = useNeighborhoodColors();
@@ -175,6 +176,12 @@ const MapComponent: React.FC<MapComponentProps> = ({
                   longitude: center.lng,
                 }}
                 anchor={{ x: 0.5, y: 0.5 }}
+                onPress={() => {
+                  console.log(
+                    `Marker pressed for ${feature.properties.ntaname}`,
+                  );
+                  onNeighborhoodPress?.(feature);
+                }}
               >
                 <View
                   style={[
@@ -222,6 +229,10 @@ const MapComponent: React.FC<MapComponentProps> = ({
             coordinate={marker.coordinate}
             title={marker.title}
             description={marker.description}
+            onPress={() => {
+              console.log(`Regular marker pressed: ${marker.id}`);
+              onMarkerPress?.(marker);
+            }}
           />
         ))}
       </MapView>

@@ -362,3 +362,42 @@ export const clusterNeighborhoods = (
 
     return clustered;
 };
+
+// Point-in-polygon test using ray casting algorithm
+export const isPointInPolygon = (
+    point: { latitude: number; longitude: number },
+    polygon: number[][][]
+): boolean => {
+    const x = point.longitude;
+    const y = point.latitude;
+    const coords = polygon[0]; // Use the outer ring
+
+    let inside = false;
+    for (let i = 0, j = coords.length - 1; i < coords.length; j = i++) {
+        const xi = coords[i][0];
+        const yi = coords[i][1];
+        const xj = coords[j][0];
+        const yj = coords[j][1];
+
+        if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
+            inside = !inside;
+        }
+    }
+    return inside;
+};
+
+// Find which neighborhood contains a given coordinate
+export const findNeighborhoodForCoordinate = (
+    coordinate: { latitude: number; longitude: number },
+    neighborhoods: NeighborhoodFeature[]
+): NeighborhoodFeature | null => {
+    for (const neighborhood of neighborhoods) {
+        // Check all polygons in the MultiPolygon
+        for (const polygon of neighborhood.geometry.coordinates) {
+            if (isPointInPolygon(coordinate, polygon)) {
+                return neighborhood;
+            }
+        }
+    }
+    return null;
+};
